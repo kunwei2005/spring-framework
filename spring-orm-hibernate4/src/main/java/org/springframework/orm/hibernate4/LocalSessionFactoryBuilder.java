@@ -94,7 +94,7 @@ public class LocalSessionFactoryBuilder extends Configuration {
 		try {
 			@SuppressWarnings("unchecked")
 			Class<? extends Annotation> converterAnnotation = (Class<? extends Annotation>)
-					LocalSessionFactoryBuilder.class.getClassLoader().loadClass("javax.persistence.Converter");
+					ClassUtils.forName("javax.persistence.Converter", LocalSessionFactoryBuilder.class.getClassLoader());
 			entityTypeFilters.add(new AnnotationTypeFilter(converterAnnotation, false));
 		}
 		catch (ClassNotFoundException ex) {
@@ -241,7 +241,7 @@ public class LocalSessionFactoryBuilder extends Configuration {
 	 * @see #scanPackages
 	 */
 	public LocalSessionFactoryBuilder addPackages(String... annotatedPackages) {
-		for (String annotatedPackage :annotatedPackages) {
+		for (String annotatedPackage : annotatedPackages) {
 			addPackage(annotatedPackage);
 		}
 		return this;

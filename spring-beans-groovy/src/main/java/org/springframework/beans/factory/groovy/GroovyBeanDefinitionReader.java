@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ import org.springframework.core.io.DescriptiveResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.EncodedResource;
 import org.springframework.core.io.support.ResourcePatternUtils;
+import org.springframework.util.ObjectUtils;
 
 /**
  * A Groovy-based reader for Spring bean definitions: like a Groovy builder,
@@ -213,7 +214,7 @@ public class GroovyBeanDefinitionReader extends AbstractBeanDefinitionReader imp
 		Binding binding = new Binding() {
 			@Override
 			public void setVariable(String name, Object value) {
-				if (currentBeanDefinition !=null) {
+				if (currentBeanDefinition != null) {
 					applyPropertyToBeanDefinition(name, value);
 				}
 				else {
@@ -269,10 +270,9 @@ public class GroovyBeanDefinitionReader extends AbstractBeanDefinitionReader imp
 		try {
 			Closure callable = null;
 			Collection constructorArgs = null;
-			if (args != null && args.length > 0) {
+			if (!ObjectUtils.isEmpty(args)) {
 				int index = args.length;
 				Object lastArg = args[index-1];
-
 				if (lastArg instanceof Closure) {
 					callable = (Closure) lastArg;
 					index--;
@@ -410,7 +410,7 @@ public class GroovyBeanDefinitionReader extends AbstractBeanDefinitionReader imp
 			}
 			dp.apply();
 		}
-		deferredProperties.clear();
+		this.deferredProperties.clear();
 	}
 
 	/**

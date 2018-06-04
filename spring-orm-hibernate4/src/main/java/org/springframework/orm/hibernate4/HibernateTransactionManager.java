@@ -81,15 +81,18 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * transaction. The DataSource that Hibernate uses needs to be JTA-enabled in
  * such a scenario (see container setup).
  *
- * <p>On JDBC 3.0, this transaction manager supports nested transactions via JDBC 3.0
- * Savepoints. The {@link #setNestedTransactionAllowed} "nestedTransactionAllowed"}
- * flag defaults to "false", though, as nested transactions will just apply to the
- * JDBC Connection, not to the Hibernate Session and its cached objects. You can
- * manually set the flag to "true" if you want to use nested transactions for
- * JDBC access code which participates in Hibernate transactions (provided that
+ * <p>This transaction manager supports nested transactions via JDBC 3.0 Savepoints.
+ * The {@link #setNestedTransactionAllowed} "nestedTransactionAllowed"} flag defaults
+ * to "false", though, as nested transactions will just apply to the JDBC Connection,
+ * not to the Hibernate Session and its cached entity objects and related context.
+ * You can manually set the flag to "true" if you want to use nested transactions
+ * for JDBC access code which participates in Hibernate transactions (provided that
  * your JDBC driver supports Savepoints). <i>Note that Hibernate itself does not
  * support nested transactions! Hence, do not expect Hibernate access code to
  * semantically participate in a nested transaction.</i>
+ *
+ * <p><b>NOTE: Hibernate 4.2+ is strongly recommended for efficient transaction
+ * management with Spring, in particular for transactional Spring JDBC access.</b>
  *
  * @author Juergen Hoeller
  * @since 3.1
@@ -437,7 +440,7 @@ public class HibernateTransactionManager extends AbstractPlatformTransactionMana
 					throw new InvalidIsolationLevelException(
 							"HibernateTransactionManager is not allowed to support custom isolation levels: " +
 							"make sure that its 'prepareConnection' flag is on (the default) and that the " +
-							"Hibernate connection release mode is set to 'on_close' (SpringTransactionFactory's default).");
+							"Hibernate connection release mode is set to 'on_close' (the default for JDBC).");
 				}
 				if (logger.isDebugEnabled()) {
 					logger.debug("Not preparing JDBC Connection of Hibernate Session [" + session + "]");
@@ -510,6 +513,7 @@ public class HibernateTransactionManager extends AbstractPlatformTransactionMana
 				}
 				finally {
 					SessionFactoryUtils.closeSession(session);
+					txObject.setSessionHolder(null);
 				}
 			}
 			throw new CannotCreateTransactionException("Could not open Hibernate Session for transaction", ex);

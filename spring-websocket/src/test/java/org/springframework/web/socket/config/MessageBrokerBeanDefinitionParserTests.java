@@ -118,6 +118,8 @@ public class MessageBrokerBeanDefinitionParserTests {
 		assertNotNull(stompHandler);
 		assertEquals(128 * 1024, stompHandler.getMessageSizeLimit());
 
+		assertNotNull(new DirectFieldAccessor(stompHandler).getPropertyValue("eventPublisher"));
+
 		httpRequestHandler = (HttpRequestHandler) suhm.getUrlMap().get("/test/**");
 		assertNotNull(httpRequestHandler);
 		assertThat(httpRequestHandler, Matchers.instanceOf(SockJsHttpRequestHandler.class));
@@ -137,6 +139,7 @@ public class MessageBrokerBeanDefinitionParserTests {
 
 		ThreadPoolTaskScheduler scheduler = (ThreadPoolTaskScheduler) defaultSockJsService.getTaskScheduler();
 		assertEquals(Runtime.getRuntime().availableProcessors(), scheduler.getScheduledThreadPoolExecutor().getCorePoolSize());
+		assertTrue(scheduler.getScheduledThreadPoolExecutor().getRemoveOnCancelPolicy());
 
 		UserSessionRegistry userSessionRegistry = this.appContext.getBean(UserSessionRegistry.class);
 		assertNotNull(userSessionRegistry);

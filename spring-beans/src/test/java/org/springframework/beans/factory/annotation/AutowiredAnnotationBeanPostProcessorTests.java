@@ -26,6 +26,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 
 import org.junit.Test;
 import org.mockito.Mockito;
@@ -34,6 +35,7 @@ import org.springframework.beans.factory.BeanCreationException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.ObjectFactory;
+import org.springframework.beans.factory.UnsatisfiedDependencyException;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.config.TypedStringValue;
@@ -547,6 +549,23 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 		assertSame(ntb1, bean.getNestedTestBeans()[0]);
 		assertSame(ntb2, bean.getNestedTestBeans()[1]);
 		bf.destroySingletons();
+	}
+
+	@Test
+	public void testConstructorResourceInjectionWithNoCandidatesAndNoFallback() {
+		DefaultListableBeanFactory bf = new DefaultListableBeanFactory();
+		AutowiredAnnotationBeanPostProcessor bpp = new AutowiredAnnotationBeanPostProcessor();
+		bpp.setBeanFactory(bf);
+		bf.addBeanPostProcessor(bpp);
+		bf.registerBeanDefinition("annotatedBean", new RootBeanDefinition(ConstructorWithoutFallbackBean.class));
+
+		try {
+			bf.getBean("annotatedBean");
+			fail("Should have thrown UnsatisfiedDependencyException");
+		}
+		catch (UnsatisfiedDependencyException ex) {
+			// expected
+		}
 	}
 
 	@Test
@@ -1716,6 +1735,18 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 		assertSame(bf.getBean(StockMovementDaoImpl.class), service.stockMovementDao);
 	}
 
+	@Test
+	public void testBridgeMethodHandling() {
+		DefaultListableBeanFactory bf = new DefaultListableBeanFactory();
+		AutowiredAnnotationBeanPostProcessor bpp = new AutowiredAnnotationBeanPostProcessor();
+		bpp.setBeanFactory(bf);
+		bf.addBeanPostProcessor(bpp);
+		bf.registerBeanDefinition("bean1", new RootBeanDefinition(MyCallable.class));
+		bf.registerBeanDefinition("bean2", new RootBeanDefinition(SecondCallable.class));
+		bf.registerBeanDefinition("bean3", new RootBeanDefinition(FooBar.class));
+		assertNotNull(bf.getBean(FooBar.class));
+	}
+
 
 	public static class ResourceInjectionBean {
 
@@ -1742,7 +1773,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
-	public static class ExtendedResourceInjectionBean<T> extends ResourceInjectionBean {
+	static class NonPublicResourceInjectionBean<T> extends ResourceInjectionBean {
 
 		@Autowired
 		public final ITestBean testBean3 = null;
@@ -1755,7 +1786,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 
 		public boolean baseInjected = false;
 
-		public ExtendedResourceInjectionBean() {
+		public NonPublicResourceInjectionBean() {
 		}
 
 		@Override
@@ -1798,12 +1829,11 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
-	public static class TypedExtendedResourceInjectionBean extends ExtendedResourceInjectionBean<NestedTestBean> {
-
+	public static class TypedExtendedResourceInjectionBean extends NonPublicResourceInjectionBean<NestedTestBean> {
 	}
 
 
-	public static class OverriddenExtendedResourceInjectionBean extends ExtendedResourceInjectionBean<NestedTestBean> {
+	public static class OverriddenExtendedResourceInjectionBean extends NonPublicResourceInjectionBean<NestedTestBean> {
 
 		public boolean subInjected = false;
 
@@ -2025,6 +2055,21 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
+	public static class ConstructorWithoutFallbackBean {
+
+		protected ITestBean testBean3;
+
+		@Autowired(required = false)
+		public ConstructorWithoutFallbackBean(ITestBean testBean3) {
+			this.testBean3 = testBean3;
+		}
+
+		public ITestBean getTestBean3() {
+			return this.testBean3;
+		}
+	}
+
+
 	public static class ConstructorsCollectionResourceInjectionBean {
 
 		protected ITestBean testBean3;
@@ -2089,7 +2134,6 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 
 		@Autowired
 		private Map<String, TestBean> testBeanMap;
-
 
 		public Map<String, TestBean> getTestBeanMap() {
 			return this.testBeanMap;
@@ -2183,7 +2227,6 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	public static class CustomAnnotationOptionalMethodResourceInjectionBean extends ResourceInjectionBean {
 
 		private TestBean testBean3;
-
 
 		@MyAutowired(optional = true)
 		protected void setTestBean3(TestBean testBean3) {
@@ -2593,7 +2636,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 
 		@SuppressWarnings("unchecked")
 		public <T> T createMock(Class<T> toMock) {
-			return (T) Proxy.newProxyInstance(AutowiredAnnotationBeanPostProcessorTests.class.getClassLoader(), new Class<?>[]{toMock},
+			return (T) Proxy.newProxyInstance(AutowiredAnnotationBeanPostProcessorTests.class.getClassLoader(), new Class<?>[] {toMock},
 					new InvocationHandler() {
 						@Override
 						public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
@@ -2610,7 +2653,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
-	public static class GenericInterface1Impl<T> implements GenericInterface1<T>{
+	public static class GenericInterface1Impl<T> implements GenericInterface1<T> {
 
 		@Autowired
 		private GenericInterface2<T> gi2;
@@ -2620,11 +2663,11 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 			return gi2.doSomethingMoreGeneric(o) + "_somethingGeneric_" + o;
 		}
 
-		public static GenericInterface1<String> create(){
+		public static GenericInterface1<String> create() {
 			return new StringGenericInterface1Impl();
 		}
 
-		public static GenericInterface1 createPlain(){
+		public static GenericInterface1 createPlain() {
 			return new GenericInterface1Impl();
 		}
 	}
@@ -2640,7 +2683,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
-	public static class GenericInterface2Impl implements GenericInterface2<String>{
+	public static class GenericInterface2Impl implements GenericInterface2<String> {
 
 		@Override
 		public String doSomethingMoreGeneric(String o) {
@@ -2658,7 +2701,7 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 	}
 
 
-	public static class PlainGenericInterface2Impl implements GenericInterface2{
+	public static class PlainGenericInterface2Impl implements GenericInterface2 {
 
 		@Override
 		public String doSomethingMoreGeneric(Object o) {
@@ -2695,6 +2738,47 @@ public class AutowiredAnnotationBeanPostProcessorTests {
 
 		@Autowired
 		private StockMovementDao<StockMovement> stockMovementDao;
+	}
+
+
+	public static class MyCallable implements Callable<Thread> {
+
+		@Override
+		public Thread call() throws Exception {
+			return null;
+		}
+	}
+
+
+	public static class SecondCallable implements Callable<Thread>{
+
+		@Override
+		public Thread call() throws Exception {
+			return null;
+		}
+	}
+
+
+	public static abstract class Foo<T extends Runnable, RT extends Callable<T>> {
+
+		private RT obj;
+
+		protected void setObj(RT obj) {
+			if (this.obj != null) {
+				throw new IllegalStateException("Already called");
+			}
+			this.obj = obj;
+		}
+	}
+
+
+	public static class FooBar extends Foo<Thread, MyCallable> {
+
+		@Override
+		@Autowired
+		public void setObj(MyCallable obj) {
+			super.setObj(obj);
+		}
 	}
 
 }

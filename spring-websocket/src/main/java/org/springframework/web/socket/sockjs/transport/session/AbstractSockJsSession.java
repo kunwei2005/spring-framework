@@ -39,6 +39,7 @@ import org.springframework.web.socket.WebSocketMessage;
 import org.springframework.web.socket.sockjs.SockJsMessageDeliveryException;
 import org.springframework.web.socket.sockjs.SockJsTransportFailureException;
 import org.springframework.web.socket.sockjs.frame.SockJsFrame;
+import org.springframework.web.socket.sockjs.frame.SockJsMessageCodec;
 import org.springframework.web.socket.sockjs.transport.SockJsServiceConfig;
 import org.springframework.web.socket.sockjs.transport.SockJsSession;
 
@@ -136,6 +137,10 @@ public abstract class AbstractSockJsSession implements SockJsSession {
 	@Override
 	public String getId() {
 		return this.id;
+	}
+
+	protected SockJsMessageCodec getMessageCodec() {
+		return this.config.getMessageCodec();
 	}
 
 	public SockJsServiceConfig getSockJsServiceConfig() {
@@ -269,6 +274,7 @@ public abstract class AbstractSockJsSession implements SockJsSession {
 			if (logger.isDebugEnabled()) {
 				logger.debug("Closing " + this + ", " + status);
 			}
+			this.state = State.CLOSED;
 			try {
 				if (isActive() && !CloseStatus.SESSION_NOT_RELIABLE.equals(status)) {
 					try {
@@ -284,7 +290,6 @@ public abstract class AbstractSockJsSession implements SockJsSession {
 				disconnect(status);
 			}
 			finally {
-				this.state = State.CLOSED;
 				try {
 					this.handler.afterConnectionClosed(this, status);
 				}
@@ -334,11 +339,17 @@ public abstract class AbstractSockJsSession implements SockJsSession {
 		catch (Throwable ex) {
 			logWriteFrameFailure(ex);
 			try {
+				// Force disconnect (so we won't try to send close frame)
 				disconnect(CloseStatus.SERVER_ERROR);
+			}
+			catch (Throwable disconnectFailure) {
+				logger.error("Failure while closing " + this, disconnectFailure);
+			}
+			try {
 				close(CloseStatus.SERVER_ERROR);
 			}
-			catch (Throwable ex2) {
-				// ignore
+			catch (Throwable t) {
+				// Nothing of consequence, already forced disconnect
 			}
 			throw new SockJsTransportFailureException("Failed to write " + frame, this.getId(), ex);
 		}
@@ -416,7 +427,9 @@ public abstract class AbstractSockJsSession implements SockJsSession {
 
 	@Override
 	public String toString() {
-		return "SockJS session id=" + this.id;
+		long currentTime = System.currentTimeMillis();
+		return "SockJsSession[id=" + this.id + ", state=" + this.state + ", sinceCreated=" +
+				(currentTime - this.timeCreated) + ", sinceLastActive=" + (currentTime - this.timeLastActive) + "]";
 	}
 
 

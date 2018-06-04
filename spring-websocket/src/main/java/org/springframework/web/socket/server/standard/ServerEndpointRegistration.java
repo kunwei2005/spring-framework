@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- * http://www.apache.org/licenses/LICENSE-2.0
+ *      http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -28,7 +28,6 @@ import javax.websocket.HandshakeResponse;
 import javax.websocket.server.HandshakeRequest;
 import javax.websocket.server.ServerEndpointConfig;
 
-import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.util.Assert;
@@ -50,7 +49,6 @@ import org.springframework.web.socket.handler.BeanCreatingHandlerProvider;
  *
  * @author Rossen Stoyanchev
  * @since 4.0
- *
  * @see ServerEndpointExporter
  */
 public class ServerEndpointRegistration extends ServerEndpointConfig.Configurator
@@ -75,7 +73,7 @@ public class ServerEndpointRegistration extends ServerEndpointConfig.Configurato
 
 	/**
 	 * Create a new {@link ServerEndpointRegistration} instance from an
-	 * {@code javax.webscoket.Endpoint} class.
+	 * {@code javax.websocket.Endpoint} class.
 	 * @param path the endpoint path
 	 * @param endpointClass the endpoint class
 	 */
@@ -169,11 +167,12 @@ public class ServerEndpointRegistration extends ServerEndpointConfig.Configurato
 	}
 
 	@Override
-	public void setBeanFactory(BeanFactory beanFactory) throws BeansException {
+	public void setBeanFactory(BeanFactory beanFactory) {
 		if (this.endpointProvider != null) {
 			this.endpointProvider.setBeanFactory(beanFactory);
 		}
 	}
+
 
 	// Implementations of ServerEndpointConfig.Configurator
 
@@ -203,4 +202,9 @@ public class ServerEndpointRegistration extends ServerEndpointConfig.Configurato
 		return super.getNegotiatedExtensions(installed, requested);
 	}
 
+
+	@Override
+	public String toString() {
+		return "ServerEndpointRegistration for path '" + getPath() + "': " + getEndpointClass();
+	}
 }

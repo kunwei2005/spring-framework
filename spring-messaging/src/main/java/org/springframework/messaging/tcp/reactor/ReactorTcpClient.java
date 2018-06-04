@@ -19,11 +19,8 @@ package org.springframework.messaging.tcp.reactor;
 import java.lang.reflect.Modifier;
 import java.net.InetSocketAddress;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Properties;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.tcp.ReconnectStrategy;
 import org.springframework.messaging.tcp.TcpConnectionHandler;
@@ -64,8 +61,6 @@ public class ReactorTcpClient<P> implements TcpOperations<P> {
 
 	public static final Class<NettyTcpClient> REACTOR_TCP_CLIENT_TYPE = NettyTcpClient.class;
 
-
-	private final static Log logger = LogFactory.getLog(ReactorTcpClient.class);
 
 	private final TcpClient<Message<P>, Message<P>> tcpClient;
 
@@ -187,7 +182,7 @@ public class ReactorTcpClient<P> implements TcpOperations<P> {
 				connection.when(Throwable.class, new Consumer<Throwable>() {
 					@Override
 					public void accept(Throwable t) {
-						logger.error("Exception on connection " + connectionHandler, t);
+						connectionHandler.handleFailure(t);
 					}
 				});
 				connectionHandler.afterConnected(new ReactorTcpConnection<P>(connection));
@@ -217,13 +212,13 @@ public class ReactorTcpClient<P> implements TcpOperations<P> {
 	}
 
 	@Override
-	public ListenableFuture<Void> shutdown() {
+	public ListenableFuture<Boolean> shutdown() {
 		try {
 			Promise<Void> promise = this.tcpClient.close();
-			return new AbstractPromiseToListenableFutureAdapter<Void, Void>(promise) {
+			return new AbstractPromiseToListenableFutureAdapter<Void, Boolean>(promise) {
 				@Override
-				protected Void adapt(Void result) {
-					return result;
+				protected Boolean adapt(Void result) {
+					return true;
 				}
 			};
 		}

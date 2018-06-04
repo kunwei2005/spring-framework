@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -205,7 +205,7 @@ public abstract class AbstractAutoProxyCreator extends ProxyConfig
 	 * Ordering is significant: The TargetSource returned from the first matching
 	 * TargetSourceCreator (that is, the first that returns non-null) will be used.
 	 */
-	public void setCustomTargetSourceCreators(TargetSourceCreator[] targetSourceCreators) {
+	public void setCustomTargetSourceCreators(TargetSourceCreator... targetSourceCreators) {
 		this.customTargetSourceCreators = targetSourceCreators;
 	}
 
@@ -216,7 +216,7 @@ public abstract class AbstractAutoProxyCreator extends ProxyConfig
 	 * This is perfectly valid, if "specific" interceptors such as matching
 	 * Advisors are all we want.
 	 */
-	public void setInterceptorNames(String[] interceptorNames) {
+	public void setInterceptorNames(String... interceptorNames) {
 		this.interceptorNames = interceptorNames;
 	}
 
@@ -274,7 +274,9 @@ public abstract class AbstractAutoProxyCreator extends ProxyConfig
 	@Override
 	public Object getEarlyBeanReference(Object bean, String beanName) throws BeansException {
 		Object cacheKey = getCacheKey(bean.getClass(), beanName);
-		this.earlyProxyReferences.add(cacheKey);
+		if (!this.earlyProxyReferences.contains(cacheKey)) {
+			this.earlyProxyReferences.add(cacheKey);
+		}
 		return wrapIfNecessary(bean, beanName, cacheKey);
 	}
 

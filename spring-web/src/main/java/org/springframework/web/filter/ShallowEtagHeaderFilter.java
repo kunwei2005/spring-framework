@@ -29,6 +29,7 @@ import javax.servlet.http.HttpServletResponseWrapper;
 
 import org.springframework.http.HttpMethod;
 import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.DigestUtils;
 import org.springframework.util.ResizableByteArrayOutputStream;
 import org.springframework.util.StreamUtils;
@@ -46,6 +47,7 @@ import org.springframework.web.util.WebUtils;
  *
  * @author Arjen Poutsma
  * @author Rossen Stoyanchev
+ * @author Juergen Hoeller
  * @since 3.0
  */
 public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
@@ -57,6 +59,11 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 	private static final String HEADER_CACHE_CONTROL = "Cache-Control";
 
 	private static final String DIRECTIVE_NO_STORE = "no-store";
+
+
+	/** Checking for Servlet 3.0+ HttpServletResponse.getHeader(String) */
+	private static final boolean responseGetHeaderAvailable =
+			ClassUtils.hasMethod(HttpServletResponse.class, "getHeader", String.class);
 
 
 	/**
@@ -72,14 +79,15 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
 			throws ServletException, IOException {
 
+		HttpServletResponse responseToUse = response;
 		if (!isAsyncDispatch(request)) {
-			response = new ShallowEtagResponseWrapper(response);
+			responseToUse = new ShallowEtagResponseWrapper(response);
 		}
 
-		filterChain.doFilter(request, response);
+		filterChain.doFilter(request, responseToUse);
 
 		if (!isAsyncStarted(request)) {
-			updateResponse(request, response);
+			updateResponse(request, responseToUse);
 		}
 	}
 
@@ -88,41 +96,44 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 				WebUtils.getNativeResponse(response, ShallowEtagResponseWrapper.class);
 		Assert.notNull(responseWrapper, "ShallowEtagResponseWrapper not found");
 
-		response = (HttpServletResponse) responseWrapper.getResponse();
-		byte[] body = responseWrapper.toByteArray();
+		HttpServletResponse rawResponse = (HttpServletResponse) responseWrapper.getResponse();
 		int statusCode = responseWrapper.getStatusCode();
+		byte[] body = responseWrapper.toByteArray();
 
-		if (isEligibleForEtag(request, responseWrapper, statusCode, body)) {
+		if (rawResponse.isCommitted()) {
+			if (body.length > 0) {
+				StreamUtils.copy(body, rawResponse.getOutputStream());
+			}
+		}
+		else if (isEligibleForEtag(request, responseWrapper, statusCode, body)) {
 			String responseETag = generateETagHeaderValue(body);
-			response.setHeader(HEADER_ETAG, responseETag);
-
+			rawResponse.setHeader(HEADER_ETAG, responseETag);
 			String requestETag = request.getHeader(HEADER_IF_NONE_MATCH);
 			if (responseETag.equals(requestETag)) {
 				if (logger.isTraceEnabled()) {
 					logger.trace("ETag [" + responseETag + "] equal to If-None-Match, sending 304");
 				}
-				response.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
+				rawResponse.setStatus(HttpServletResponse.SC_NOT_MODIFIED);
 			}
 			else {
 				if (logger.isTraceEnabled()) {
 					logger.trace("ETag [" + responseETag + "] not equal to If-None-Match [" + requestETag +
 							"], sending normal response");
 				}
-				copyBodyToResponse(body, response);
+				if (body.length > 0) {
+					rawResponse.setContentLength(body.length);
+					StreamUtils.copy(body, rawResponse.getOutputStream());
+				}
 			}
 		}
 		else {
 			if (logger.isTraceEnabled()) {
 				logger.trace("Response with status code [" + statusCode + "] not eligible for ETag");
 			}
-			copyBodyToResponse(body, response);
-		}
-	}
-
-	private void copyBodyToResponse(byte[] body, HttpServletResponse response) throws IOException {
-		if (body.length > 0) {
-			response.setContentLength(body.length);
-			StreamUtils.copy(body, response.getOutputStream());
+			if (body.length > 0) {
+				rawResponse.setContentLength(body.length);
+				StreamUtils.copy(body, rawResponse.getOutputStream());
+			}
 		}
 	}
 
@@ -145,7 +156,7 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 
 		if (responseStatusCode >= 200 && responseStatusCode < 300 &&
 				HttpMethod.GET.name().equals(request.getMethod())) {
-			String cacheControl = response.getHeader(HEADER_CACHE_CONTROL);
+			String cacheControl = (responseGetHeaderAvailable ? response.getHeader(HEADER_CACHE_CONTROL) : null);
 			if (cacheControl == null || !cacheControl.contains(DIRECTIVE_NO_STORE)) {
 				return true;
 			}
@@ -202,19 +213,22 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 
 		@Override
 		public void sendError(int sc) throws IOException {
+			copyBodyToResponse();
 			super.sendError(sc);
 			this.statusCode = sc;
 		}
 
 		@Override
 		public void sendError(int sc, String msg) throws IOException {
+			copyBodyToResponse();
 			super.sendError(sc, msg);
 			this.statusCode = sc;
 		}
 
 		@Override
-		public void setContentLength(int len) {
-			this.content.resize(len);
+		public void sendRedirect(String location) throws IOException {
+			copyBodyToResponse();
+			super.sendRedirect(location);
 		}
 
 		@Override
@@ -233,13 +247,38 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 		}
 
 		@Override
-		public void reset() {
-			super.reset();
-			resetBuffer();
+		public void setContentLength(int len) {
+			if (len > this.content.capacity()) {
+				this.content.resize(len);
+			}
+		}
+
+		// Overrides Servlet 3.1 setContentLengthLong(long) at runtime
+		public void setContentLengthLong(long len) {
+			if (len > Integer.MAX_VALUE) {
+				throw new IllegalArgumentException("Content-Length exceeds ShallowEtagHeaderFilter's maximum (" +
+						Integer.MAX_VALUE + "): " + len);
+			}
+			if (len > this.content.capacity()) {
+				this.content.resize((int) len);
+			}
+		}
+
+		@Override
+		public void setBufferSize(int size) {
+			if (size > this.content.capacity()) {
+				this.content.resize(size);
+			}
 		}
 
 		@Override
 		public void resetBuffer() {
+			this.content.reset();
+		}
+
+		@Override
+		public void reset() {
+			super.reset();
 			this.content.reset();
 		}
 
@@ -249,6 +288,14 @@ public class ShallowEtagHeaderFilter extends OncePerRequestFilter {
 
 		public byte[] toByteArray() {
 			return this.content.toByteArray();
+		}
+
+		private void copyBodyToResponse() throws IOException {
+			if (this.content.size() > 0) {
+				getResponse().setContentLength(this.content.size());
+				StreamUtils.copy(this.content.toByteArray(), getResponse().getOutputStream());
+				this.content.reset();
+			}
 		}
 
 

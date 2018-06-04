@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -142,10 +142,10 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	private static Class<? extends Annotation> ejbRefClass = null;
 
 	static {
-		ClassLoader cl = CommonAnnotationBeanPostProcessor.class.getClassLoader();
 		try {
 			@SuppressWarnings("unchecked")
-			Class<? extends Annotation> clazz = (Class<? extends Annotation>) cl.loadClass("javax.xml.ws.WebServiceRef");
+			Class<? extends Annotation> clazz = (Class<? extends Annotation>)
+					ClassUtils.forName("javax.xml.ws.WebServiceRef", CommonAnnotationBeanPostProcessor.class.getClassLoader());
 			webServiceRefClass = clazz;
 		}
 		catch (ClassNotFoundException ex) {
@@ -153,7 +153,8 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 		}
 		try {
 			@SuppressWarnings("unchecked")
-			Class<? extends Annotation> clazz = (Class<? extends Annotation>) cl.loadClass("javax.ejb.EJB");
+			Class<? extends Annotation> clazz = (Class<? extends Annotation>)
+					ClassUtils.forName("javax.ejb.EJB", CommonAnnotationBeanPostProcessor.class.getClassLoader());
 			ejbRefClass = clazz;
 		}
 		catch (ClassNotFoundException ex) {
@@ -280,7 +281,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	public void postProcessMergedBeanDefinition(RootBeanDefinition beanDefinition, Class<?> beanType, String beanName) {
 		super.postProcessMergedBeanDefinition(beanDefinition, beanType, beanName);
 		if (beanType != null) {
-			InjectionMetadata metadata = findResourceMetadata(beanName, beanType);
+			InjectionMetadata metadata = findResourceMetadata(beanName, beanType, null);
 			metadata.checkConfigMembers(beanDefinition);
 		}
 	}
@@ -299,7 +300,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	public PropertyValues postProcessPropertyValues(
 			PropertyValues pvs, PropertyDescriptor[] pds, Object bean, String beanName) throws BeansException {
 
-		InjectionMetadata metadata = findResourceMetadata(beanName, bean.getClass());
+		InjectionMetadata metadata = findResourceMetadata(beanName, bean.getClass(), pvs);
 		try {
 			metadata.inject(bean, beanName, pvs);
 		}
@@ -310,15 +311,19 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 	}
 
 
-	private InjectionMetadata findResourceMetadata(String beanName, final Class<?> clazz) {
-		// Quick check on the concurrent map first, with minimal locking.
+	private InjectionMetadata findResourceMetadata(String beanName, final Class<?> clazz, PropertyValues pvs) {
 		// Fall back to class name as cache key, for backwards compatibility with custom callers.
 		String cacheKey = (StringUtils.hasLength(beanName) ? beanName : clazz.getName());
+		// Quick check on the concurrent map first, with minimal locking.
 		InjectionMetadata metadata = this.injectionMetadataCache.get(cacheKey);
 		if (InjectionMetadata.needsRefresh(metadata, clazz)) {
 			synchronized (this.injectionMetadataCache) {
 				metadata = this.injectionMetadataCache.get(cacheKey);
 				if (InjectionMetadata.needsRefresh(metadata, clazz)) {
+					if (metadata != null) {
+						metadata.clear(pvs);
+					}
+
 					LinkedList<InjectionMetadata.InjectedElement> elements = new LinkedList<InjectionMetadata.InjectedElement>();
 					Class<?> targetClass = clazz;
 
@@ -357,7 +362,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 									if (method.getParameterTypes().length != 1) {
 										throw new IllegalStateException("@WebServiceRef annotation requires a single-arg method: " + method);
 									}
-									PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method);
+									PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method, clazz);
 									currElements.add(new WebServiceRefElement(method, pd));
 								}
 								else if (ejbRefClass != null && method.isAnnotationPresent(ejbRefClass)) {
@@ -367,7 +372,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 									if (method.getParameterTypes().length != 1) {
 										throw new IllegalStateException("@EJB annotation requires a single-arg method: " + method);
 									}
-									PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method);
+									PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method, clazz);
 									currElements.add(new EjbRefElement(method, pd));
 								}
 								else if (method.isAnnotationPresent(Resource.class)) {
@@ -379,7 +384,7 @@ public class CommonAnnotationBeanPostProcessor extends InitDestroyAnnotationBean
 										throw new IllegalStateException("@Resource annotation requires a single-arg method: " + method);
 									}
 									if (!ignoredResourceTypes.contains(paramTypes[0].getName())) {
-										PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method);
+										PropertyDescriptor pd = BeanUtils.findPropertyForMethod(method, clazz);
 										currElements.add(new ResourceElement(method, pd));
 									}
 								}

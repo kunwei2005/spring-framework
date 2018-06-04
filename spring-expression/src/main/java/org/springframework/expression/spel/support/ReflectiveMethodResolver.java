@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 package org.springframework.expression.spel.support;
 
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -94,10 +95,10 @@ public class ReflectiveMethodResolver implements MethodResolver {
 	/**
 	 * Locate a method on a type. There are three kinds of match that might occur:
 	 * <ol>
-	 * <li>An exact match where the types of the arguments match the types of the constructor
-	 * <li>An in-exact match where the types we are looking for are subtypes of those defined on the constructor
-	 * <li>A match where we are able to convert the arguments into those expected by the constructor,
-	 * according to the registered type converter.
+	 * <li>an exact match where the types of the arguments match the types of the constructor
+	 * <li>an in-exact match where the types we are looking for are subtypes of those defined on the constructor
+	 * <li>a match where we are able to convert the arguments into those expected by the constructor,
+	 * according to the registered type converter
 	 * </ol>
 	 */
 	@Override
@@ -107,7 +108,7 @@ public class ReflectiveMethodResolver implements MethodResolver {
 		try {
 			TypeConverter typeConverter = context.getTypeConverter();
 			Class<?> type = (targetObject instanceof Class ? (Class<?>) targetObject : targetObject.getClass());
-			List<Method> methods = new ArrayList<Method>(Arrays.asList(getMethods(type, targetObject)));
+			List<Method> methods = new ArrayList<Method>(getMethods(type, targetObject));
 
 			// If a filter is registered for this type, call it
 			MethodFilter filter = (this.filters != null ? this.filters.get(type) : null);
@@ -201,14 +202,22 @@ public class ReflectiveMethodResolver implements MethodResolver {
 		}
 	}
 
-	private Method[] getMethods(Class<?> type, Object targetObject) {
+	private Collection<Method> getMethods(Class<?> type, Object targetObject) {
 		if (targetObject instanceof Class) {
-			Set<Method> methods = new HashSet<Method>();
-			methods.addAll(Arrays.asList(getMethods(type)));
-			methods.addAll(Arrays.asList(getMethods(targetObject.getClass())));
-			return methods.toArray(new Method[methods.size()]);
+			Set<Method> result = new LinkedHashSet<Method>();
+			result.addAll(Arrays.asList(getMethods(targetObject.getClass())));
+			// Add these also so that static result are invocable on the type: e.g. Float.valueOf(..)
+			Method[] methods = getMethods(type);
+			for (Method method : methods) {
+				if (Modifier.isStatic(method.getModifiers())) {
+					result.add(method);
+				}
+			}
+			return result;
 		}
-		return getMethods(type);
+		else {
+			return Arrays.asList(getMethods(type));
+		}
 	}
 
 	/**

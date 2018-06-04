@@ -26,30 +26,27 @@ import java.util.Set;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+
+import org.springframework.beans.BeanInstantiationException;
 import org.springframework.beans.BeanUtils;
-import org.springframework.context.ApplicationContext;
 import org.springframework.core.annotation.AnnotationAttributes;
-import org.springframework.test.context.MetaAnnotationUtils.AnnotationDescriptor;
 import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
 import org.springframework.util.ObjectUtils;
 
-import static org.springframework.test.context.MetaAnnotationUtils.*;
-
 /**
- * <p>
- * {@code TestContextManager} is the main entry point into the
- * <em>Spring TestContext Framework</em>, which provides support for loading and
- * accessing {@link ApplicationContext application contexts}, dependency
- * injection of test instances,
- * {@link org.springframework.transaction.annotation.Transactional
- * transactional} execution of test methods, etc.
- * </p>
- * <p>
- * Specifically, a {@code TestContextManager} is responsible for managing a
+ * {@code TestContextManager} is the main entry point into the <em>Spring
+ * TestContext Framework</em>, which provides support for loading and accessing
+ * {@link org.springframework.context.ApplicationContext application contexts},
+ * dependency injection of test instances,
+ * {@link org.springframework.transaction.annotation.Transactional transactional}
+ * execution of test methods, etc.
+ *
+ * <p>Specifically, a {@code TestContextManager} is responsible for managing a
  * single {@link TestContext} and signaling events to all registered
  * {@link TestExecutionListener TestExecutionListeners} at well defined test
  * execution points:
- * </p>
+ *
  * <ul>
  * <li>{@link #beforeTestClass() before test class execution}: prior to any
  * <em>before class methods</em> of a particular testing framework (e.g., JUnit
@@ -78,17 +75,18 @@ import static org.springframework.test.context.MetaAnnotationUtils.*;
 public class TestContextManager {
 
 	private static final String[] DEFAULT_TEST_EXECUTION_LISTENER_CLASS_NAMES = new String[] {
-		"org.springframework.test.context.web.ServletTestExecutionListener",
-		"org.springframework.test.context.support.DependencyInjectionTestExecutionListener",
-		"org.springframework.test.context.support.DirtiesContextTestExecutionListener",
-		"org.springframework.test.context.transaction.TransactionalTestExecutionListener" };
+			"org.springframework.test.context.web.ServletTestExecutionListener",
+			"org.springframework.test.context.support.DependencyInjectionTestExecutionListener",
+			"org.springframework.test.context.support.DirtiesContextTestExecutionListener",
+			"org.springframework.test.context.transaction.TransactionalTestExecutionListener" };
 
 	private static final Log logger = LogFactory.getLog(TestContextManager.class);
 
 	/**
-	 * Cache of Spring application contexts. This needs to be static, as tests
-	 * may be destroyed and recreated between running individual test methods,
-	 * for example with JUnit.
+	 * Cache of Spring application contexts.
+	 * <p>This needs to be static, since test instances may be destroyed and
+	 * recreated between invocations of individual test methods, as is the case
+	 * with JUnit.
 	 */
 	static final ContextCache contextCache = new ContextCache();
 
@@ -98,7 +96,11 @@ public class TestContextManager {
 
 
 	/**
-	 * Delegates to {@link #TestContextManager(Class, String)} with a value of
+	 * Construct a new {@code TestContextManager} for the specified {@linkplain Class test class}
+	 * and automatically {@link #registerTestExecutionListeners register} the
+	 * {@link TestExecutionListener TestExecutionListeners} configured for the test class
+	 * via the {@link TestExecutionListeners &#064;TestExecutionListeners} annotation.
+	 * <p>Delegates to {@link #TestContextManager(Class, String)} with a value of
 	 * {@code null} for the default {@code ContextLoader} class name.
 	 */
 	public TestContextManager(Class<?> testClass) {
@@ -106,16 +108,14 @@ public class TestContextManager {
 	}
 
 	/**
-	 * Constructs a new {@code TestContextManager} for the specified {@linkplain Class
-	 * test class} and automatically {@link #registerTestExecutionListeners registers} the
+	 * Construct a new {@code TestContextManager} for the specified {@linkplain Class test class}
+	 * and automatically {@link #registerTestExecutionListeners register} the
 	 * {@link TestExecutionListener TestExecutionListeners} configured for the test class
-	 * via the {@link TestExecutionListeners @TestExecutionListeners} annotation.
+	 * via the {@link TestExecutionListeners &#064;TestExecutionListeners} annotation.
 	 * @param testClass the test class to be managed
-	 * @param defaultContextLoaderClassName the name of the default {@code ContextLoader}
-	 * class to use (may be {@code null})
-	 * @see #registerTestExecutionListeners(TestExecutionListener...)
-	 * @deprecated Spring Framework 4.1 will introduce a bootstrap strategy for
-	 * the TestContext framework at which point this constructor will be removed.
+	 * @param defaultContextLoaderClassName the name of the default {@code ContextLoader} class
+	 * to use (may be {@code null})
+	 * @see #registerTestExecutionListeners
 	 */
 	@Deprecated
 	public TestContextManager(Class<?> testClass, String defaultContextLoaderClassName) {
@@ -123,9 +123,9 @@ public class TestContextManager {
 		registerTestExecutionListeners(retrieveTestExecutionListeners(testClass));
 	}
 
+
 	/**
-	 * Returns the {@link TestContext} managed by this
-	 * {@code TestContextManager}.
+	 * Get the {@link TestContext} managed by this {@code TestContextManager}.
 	 */
 	protected final TestContext getTestContext() {
 		return this.testContext;
@@ -159,8 +159,7 @@ public class TestContextManager {
 	 * registered for this {@code TestContextManager} in reverse order.
 	 */
 	private List<TestExecutionListener> getReversedTestExecutionListeners() {
-		List<TestExecutionListener> listenersReversed = new ArrayList<TestExecutionListener>(
-			getTestExecutionListeners());
+		List<TestExecutionListener> listenersReversed = new ArrayList<TestExecutionListener>(getTestExecutionListeners());
 		Collections.reverse(listenersReversed);
 		return listenersReversed;
 	}
@@ -182,12 +181,13 @@ public class TestContextManager {
 		Class<TestExecutionListeners> annotationType = TestExecutionListeners.class;
 		List<Class<? extends TestExecutionListener>> classesList = new ArrayList<Class<? extends TestExecutionListener>>();
 
-		AnnotationDescriptor<TestExecutionListeners> descriptor = findAnnotationDescriptor(clazz, annotationType);
+		MetaAnnotationUtils.AnnotationDescriptor<TestExecutionListeners> descriptor =
+				MetaAnnotationUtils.findAnnotationDescriptor(clazz, annotationType);
 
 		// Use defaults?
 		if (descriptor == null) {
 			if (logger.isDebugEnabled()) {
-				logger.debug("@TestExecutionListeners is not present for class [" + clazz + "]: using defaults.");
+				logger.debug("@TestExecutionListeners is not present for class [" + clazz.getName() + "]: using defaults.");
 			}
 			classesList.addAll(getDefaultTestExecutionListenerClasses());
 		}
@@ -195,24 +195,21 @@ public class TestContextManager {
 			// Traverse the class hierarchy...
 			while (descriptor != null) {
 				Class<?> declaringClass = descriptor.getDeclaringClass();
-
 				AnnotationAttributes annAttrs = descriptor.getAnnotationAttributes();
 				if (logger.isTraceEnabled()) {
-					logger.trace(String.format(
-						"Retrieved @TestExecutionListeners attributes [%s] for declaring class [%s].", annAttrs,
-						declaringClass));
+					logger.trace(String.format("Retrieved @TestExecutionListeners attributes [%s] for declaring class [%s].",
+							annAttrs, declaringClass.getName()));
 				}
 
-				Class<? extends TestExecutionListener>[] valueListenerClasses = (Class<? extends TestExecutionListener>[]) annAttrs.getClassArray("value");
-				Class<? extends TestExecutionListener>[] listenerClasses = (Class<? extends TestExecutionListener>[]) annAttrs.getClassArray("listeners");
+				Class<? extends TestExecutionListener>[] valueListenerClasses =
+						(Class<? extends TestExecutionListener>[]) annAttrs.getClassArray("value");
+				Class<? extends TestExecutionListener>[] listenerClasses =
+						(Class<? extends TestExecutionListener>[]) annAttrs.getClassArray("listeners");
 				if (!ObjectUtils.isEmpty(valueListenerClasses) && !ObjectUtils.isEmpty(listenerClasses)) {
-					String msg = String.format(
-						"Class [%s] has been configured with @TestExecutionListeners' 'value' [%s] "
-								+ "and 'listeners' [%s] attributes. Use one or the other, but not both.",
-						declaringClass, ObjectUtils.nullSafeToString(valueListenerClasses),
-						ObjectUtils.nullSafeToString(listenerClasses));
-					logger.error(msg);
-					throw new IllegalStateException(msg);
+					throw new IllegalStateException(String.format("Class [%s] configured with @TestExecutionListeners' " +
+							"'value' [%s] and 'listeners' [%s] attributes. Use one or the other, but not both.",
+							declaringClass.getName(), ObjectUtils.nullSafeToString(valueListenerClasses),
+							ObjectUtils.nullSafeToString(listenerClasses)));
 				}
 				else if (!ObjectUtils.isEmpty(valueListenerClasses)) {
 					listenerClasses = valueListenerClasses;
@@ -221,22 +218,31 @@ public class TestContextManager {
 				if (listenerClasses != null) {
 					classesList.addAll(0, Arrays.<Class<? extends TestExecutionListener>> asList(listenerClasses));
 				}
-
-				descriptor = (annAttrs.getBoolean("inheritListeners") ? findAnnotationDescriptor(
-					descriptor.getRootDeclaringClass().getSuperclass(), annotationType) : null);
+				descriptor = (annAttrs.getBoolean("inheritListeners") ? MetaAnnotationUtils.findAnnotationDescriptor(
+						descriptor.getRootDeclaringClass().getSuperclass(), annotationType) : null);
 			}
 		}
 
 		List<TestExecutionListener> listeners = new ArrayList<TestExecutionListener>(classesList.size());
 		for (Class<? extends TestExecutionListener> listenerClass : classesList) {
+			NoClassDefFoundError ncdfe = null;
 			try {
 				listeners.add(BeanUtils.instantiateClass(listenerClass));
 			}
 			catch (NoClassDefFoundError err) {
+				ncdfe = err;
+			}
+			catch (BeanInstantiationException ex) {
+				if (ex.getCause() instanceof NoClassDefFoundError) {
+					ncdfe = (NoClassDefFoundError) ex.getCause();
+				}
+			}
+			if (ncdfe != null) {
 				if (logger.isInfoEnabled()) {
-					logger.info(String.format("Could not instantiate TestExecutionListener class [%s]. "
-							+ "Specify custom listener classes or make the default listener classes "
-							+ "(and their dependencies) available.", listenerClass.getName()));
+					logger.info(String.format("Could not instantiate TestExecutionListener [%s]. " +
+							"Specify custom listener classes or make the default listener classes " +
+							"(and their required dependencies) available. Offending class: [%s]",
+							listenerClass.getName(), ncdfe.getMessage()));
 				}
 			}
 		}
@@ -252,15 +258,15 @@ public class TestContextManager {
 	@SuppressWarnings("unchecked")
 	protected Set<Class<? extends TestExecutionListener>> getDefaultTestExecutionListenerClasses() {
 		Set<Class<? extends TestExecutionListener>> defaultListenerClasses = new LinkedHashSet<Class<? extends TestExecutionListener>>();
+		ClassLoader cl = getClass().getClassLoader();
 		for (String className : DEFAULT_TEST_EXECUTION_LISTENER_CLASS_NAMES) {
 			try {
-				defaultListenerClasses.add((Class<? extends TestExecutionListener>) getClass().getClassLoader().loadClass(
-					className));
+				defaultListenerClasses.add((Class<? extends TestExecutionListener>) ClassUtils.forName(className, cl));
 			}
-			catch (Throwable t) {
+			catch (Throwable ex) {
 				if (logger.isDebugEnabled()) {
-					logger.debug("Could not load default TestExecutionListener class [" + className
-							+ "]. Specify custom listener classes or make the default listener classes available.", t);
+					logger.debug("Could not load default TestExecutionListener class [" + className +
+							"]. Specify custom listener classes or make the default listener classes available.", ex);
 				}
 			}
 		}
@@ -281,9 +287,9 @@ public class TestContextManager {
 	 * @see #getTestExecutionListeners()
 	 */
 	public void beforeTestClass() throws Exception {
-		final Class<?> testClass = getTestContext().getTestClass();
+		Class<?> testClass = getTestContext().getTestClass();
 		if (logger.isTraceEnabled()) {
-			logger.trace("beforeTestClass(): class [" + testClass + "]");
+			logger.trace("beforeTestClass(): class [" + testClass.getName() + "]");
 		}
 		getTestContext().updateState(null, null, null);
 
@@ -292,8 +298,8 @@ public class TestContextManager {
 				testExecutionListener.beforeTestClass(getTestContext());
 			}
 			catch (Exception ex) {
-				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener
-						+ "] to process 'before class' callback for test class [" + testClass + "]", ex);
+				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener +
+						"] to process 'before class' callback for test class [" + testClass + "]", ex);
 				throw ex;
 			}
 		}
@@ -325,8 +331,8 @@ public class TestContextManager {
 				testExecutionListener.prepareTestInstance(getTestContext());
 			}
 			catch (Exception ex) {
-				logger.error("Caught exception while allowing TestExecutionListener [" + testExecutionListener
-						+ "] to prepare test instance [" + testInstance + "]", ex);
+				logger.error("Caught exception while allowing TestExecutionListener [" + testExecutionListener +
+						"] to prepare test instance [" + testInstance + "]", ex);
 				throw ex;
 			}
 		}
@@ -362,9 +368,9 @@ public class TestContextManager {
 				testExecutionListener.beforeTestMethod(getTestContext());
 			}
 			catch (Exception ex) {
-				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener
-						+ "] to process 'before' execution of test method [" + testMethod + "] for test instance ["
-						+ testInstance + "]", ex);
+				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener +
+						"] to process 'before' execution of test method [" + testMethod + "] for test instance [" +
+						testInstance + "]", ex);
 				throw ex;
 			}
 		}
@@ -397,8 +403,8 @@ public class TestContextManager {
 	public void afterTestMethod(Object testInstance, Method testMethod, Throwable exception) throws Exception {
 		Assert.notNull(testInstance, "testInstance must not be null");
 		if (logger.isTraceEnabled()) {
-			logger.trace("afterTestMethod(): instance [" + testInstance + "], method [" + testMethod + "], exception ["
-					+ exception + "]");
+			logger.trace("afterTestMethod(): instance [" + testInstance + "], method [" + testMethod +
+					"], exception [" + exception + "]");
 		}
 		getTestContext().updateState(testInstance, testMethod, exception);
 
@@ -410,9 +416,9 @@ public class TestContextManager {
 				testExecutionListener.afterTestMethod(getTestContext());
 			}
 			catch (Exception ex) {
-				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener
-						+ "] to process 'after' execution for test: method [" + testMethod + "], instance ["
-						+ testInstance + "], exception [" + exception + "]", ex);
+				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener +
+						"] to process 'after' execution for test: method [" + testMethod + "], instance [" +
+						testInstance + "], exception [" + exception + "]", ex);
 				if (afterTestMethodException == null) {
 					afterTestMethodException = ex;
 				}
@@ -438,9 +444,9 @@ public class TestContextManager {
 	 * @see #getTestExecutionListeners()
 	 */
 	public void afterTestClass() throws Exception {
-		final Class<?> testClass = getTestContext().getTestClass();
+		Class<?> testClass = getTestContext().getTestClass();
 		if (logger.isTraceEnabled()) {
-			logger.trace("afterTestClass(): class [" + testClass + "]");
+			logger.trace("afterTestClass(): class [" + testClass.getName() + "]");
 		}
 		getTestContext().updateState(null, null, null);
 
@@ -452,8 +458,8 @@ public class TestContextManager {
 				testExecutionListener.afterTestClass(getTestContext());
 			}
 			catch (Exception ex) {
-				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener
-						+ "] to process 'after class' callback for test class [" + testClass + "]", ex);
+				logger.warn("Caught exception while allowing TestExecutionListener [" + testExecutionListener +
+						"] to process 'after class' callback for test class [" + testClass + "]", ex);
 				if (afterTestClassException == null) {
 					afterTestClassException = ex;
 				}

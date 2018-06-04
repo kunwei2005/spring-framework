@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.springframework.beans.factory.support;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -277,7 +278,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 
 	@Override
 	public boolean containsSingleton(String beanName) {
-		return (this.singletonObjects.containsKey(beanName));
+		return this.singletonObjects.containsKey(beanName);
 	}
 
 	@Override
@@ -330,8 +331,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	 * @see #isSingletonCurrentlyInCreation
 	 */
 	protected void beforeSingletonCreation(String beanName) {
-		if (!this.inCreationCheckExclusions.contains(beanName) &&
-				!this.singletonsCurrentlyInCreation.add(beanName)) {
+		if (!this.inCreationCheckExclusions.contains(beanName) && !this.singletonsCurrentlyInCreation.add(beanName)) {
 			throw new BeanCurrentlyInCreationException(beanName);
 		}
 	}
@@ -343,8 +343,7 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	 * @see #isSingletonCurrentlyInCreation
 	 */
 	protected void afterSingletonCreation(String beanName) {
-		if (!this.inCreationCheckExclusions.contains(beanName) &&
-				!this.singletonsCurrentlyInCreation.remove(beanName)) {
+		if (!this.inCreationCheckExclusions.contains(beanName) && !this.singletonsCurrentlyInCreation.remove(beanName)) {
 			throw new IllegalStateException("Singleton '" + beanName + "' isn't currently in creation");
 		}
 	}
@@ -417,9 +416,18 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 	 * dependent on the given bean or on any of its transitive dependencies.
 	 * @param beanName the name of the bean to check
 	 * @param dependentBeanName the name of the dependent bean
+	 * @since 4.0
 	 */
 	protected boolean isDependent(String beanName, String dependentBeanName) {
-		Set<String> dependentBeans = this.dependentBeanMap.get(beanName);
+		return isDependent(beanName, dependentBeanName, null);
+	}
+
+	private boolean isDependent(String beanName, String dependentBeanName, Set<String> alreadySeen) {
+		String canonicalName = canonicalName(beanName);
+		if (alreadySeen != null && alreadySeen.contains(beanName)) {
+			return false;
+		}
+		Set<String> dependentBeans = this.dependentBeanMap.get(canonicalName);
 		if (dependentBeans == null) {
 			return false;
 		}
@@ -427,7 +435,11 @@ public class DefaultSingletonBeanRegistry extends SimpleAliasRegistry implements
 			return true;
 		}
 		for (String transitiveDependency : dependentBeans) {
-			if (isDependent(transitiveDependency, dependentBeanName)) {
+			if (alreadySeen == null) {
+				alreadySeen = new HashSet<String>();
+			}
+			alreadySeen.add(beanName);
+			if (isDependent(transitiveDependency, dependentBeanName, alreadySeen)) {
 				return true;
 			}
 		}

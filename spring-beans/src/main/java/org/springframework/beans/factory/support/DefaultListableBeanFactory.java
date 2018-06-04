@@ -105,9 +105,9 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	private static Class<?> javaxInjectProviderClass = null;
 
 	static {
-		ClassLoader cl = DefaultListableBeanFactory.class.getClassLoader();
 		try {
-			javaxInjectProviderClass = cl.loadClass("javax.inject.Provider");
+			javaxInjectProviderClass =
+					ClassUtils.forName("javax.inject.Provider", DefaultListableBeanFactory.class.getClassLoader());
 		}
 		catch (ClassNotFoundException ex) {
 			// JSR-330 API not available - Provider interface simply not supported then.
@@ -140,14 +140,14 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	/** Map of bean definition objects, keyed by bean name */
 	private final Map<String, BeanDefinition> beanDefinitionMap = new ConcurrentHashMap<String, BeanDefinition>(64);
 
-	/** Map of singleton and non-singleton bean names keyed by dependency type */
+	/** Map of singleton and non-singleton bean names, keyed by dependency type */
 	private final Map<Class<?>, String[]> allBeanNamesByType = new ConcurrentHashMap<Class<?>, String[]>(64);
 
-	/** Map of singleton-only bean names keyed by dependency type */
+	/** Map of singleton-only bean names, keyed by dependency type */
 	private final Map<Class<?>, String[]> singletonBeanNamesByType = new ConcurrentHashMap<Class<?>, String[]>(64);
 
 	/** List of bean definition names, in registration order */
-	private final List<String> beanDefinitionNames = new ArrayList<String>();
+	private final List<String> beanDefinitionNames = new ArrayList<String>(64);
 
 	/** Whether bean definition metadata may be cached for all beans */
 	private boolean configurationFrozen = false;
@@ -284,7 +284,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		if (beanNames.length > 1) {
 			ArrayList<String> autowireCandidates = new ArrayList<String>();
 			for (String beanName : beanNames) {
-				if (getBeanDefinition(beanName).isAutowireCandidate()) {
+				if (!containsBeanDefinition(beanName) || getBeanDefinition(beanName).isAutowireCandidate()) {
 					autowireCandidates.add(beanName);
 				}
 			}
@@ -671,12 +671,15 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		if (this.logger.isDebugEnabled()) {
 			this.logger.debug("Pre-instantiating singletons in " + this);
 		}
+
 		List<String> beanNames;
 		synchronized (this.beanDefinitionMap) {
 			// Iterate over a copy to allow for init methods which in turn register new bean definitions.
 			// While this may not be part of the regular factory bootstrap, it does otherwise work fine.
 			beanNames = new ArrayList<String>(this.beanDefinitionNames);
 		}
+
+		// Trigger initialization of all non-lazy singleton beans...
 		for (String beanName : beanNames) {
 			RootBeanDefinition bd = getMergedLocalBeanDefinition(beanName);
 			if (!bd.isAbstract() && bd.isSingleton() && !bd.isLazyInit()) {
@@ -728,8 +731,10 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 			}
 		}
 
+		BeanDefinition oldBeanDefinition;
+
 		synchronized (this.beanDefinitionMap) {
-			BeanDefinition oldBeanDefinition = this.beanDefinitionMap.get(beanName);
+			oldBeanDefinition = this.beanDefinitionMap.get(beanName);
 			if (oldBeanDefinition != null) {
 				if (!this.allowBeanDefinitionOverriding) {
 					throw new BeanDefinitionStoreException(beanDefinition.getResourceDescription(), beanName,
@@ -758,7 +763,9 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 			this.beanDefinitionMap.put(beanName, beanDefinition);
 		}
 
-		resetBeanDefinition(beanName);
+		if (oldBeanDefinition != null || containsSingleton(beanName)) {
+			resetBeanDefinition(beanName);
+		}
 	}
 
 	@Override
@@ -793,9 +800,6 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 		// be necessary, rather just meant for overriding a context's default beans
 		// (e.g. the default StaticMessageSource in a StaticApplicationContext).
 		destroySingleton(beanName);
-
-		// Remove any assumptions about by-type mappings.
-		clearByTypeCache();
 
 		// Reset all bean definitions that have the given bean as parent (recursively).
 		for (String bdName : this.beanDefinitionNames) {
@@ -1013,7 +1017,7 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 			}
 		}
 		for (String candidateName : candidateNames) {
-			if (!candidateName.equals(beanName) && isAutowireCandidate(candidateName, descriptor)) {
+			if (!isSelfReference(beanName, candidateName) && isAutowireCandidate(candidateName, descriptor)) {
 				result.put(candidateName, getBean(candidateName));
 			}
 		}
@@ -1089,6 +1093,17 @@ public class DefaultListableBeanFactory extends AbstractAutowireCapableBeanFacto
 	protected boolean matchesBeanName(String beanName, String candidateName) {
 		return (candidateName != null &&
 				(candidateName.equals(beanName) || ObjectUtils.containsElement(getAliases(beanName), candidateName)));
+	}
+
+	/**
+	 * Determine whether the given beanName/candidateName pair indicates a self reference,
+	 * i.e. whether the candidate points back to the original bean or to a factory method
+	 * on the original bean.
+	 */
+	private boolean isSelfReference(String beanName, String candidateName) {
+		return (beanName != null && candidateName != null &&
+				(beanName.equals(candidateName) || (containsBeanDefinition(candidateName) &&
+						beanName.equals(getMergedLocalBeanDefinition(candidateName).getFactoryBeanName()))));
 	}
 
 	/**

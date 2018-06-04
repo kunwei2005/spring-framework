@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,11 +18,10 @@ package org.springframework.util.concurrent;
 
 import java.io.IOException;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
 import org.junit.Test;
+
+import static org.junit.Assert.*;
 
 /**
  * @author Arjen Poutsma
@@ -30,7 +29,7 @@ import org.junit.Test;
 public class ListenableFutureTaskTests {
 
 	@Test
-	public void success() throws ExecutionException, InterruptedException {
+	public void success() throws Exception {
 		final String s = "Hello World";
 		Callable<String> callable = new Callable<String>() {
 			@Override
@@ -44,17 +43,16 @@ public class ListenableFutureTaskTests {
 			public void onSuccess(String result) {
 				assertEquals(s, result);
 			}
-
 			@Override
-			public void onFailure(Throwable t) {
-				fail(t.getMessage());
+			public void onFailure(Throwable ex) {
+				fail(ex.getMessage());
 			}
 		});
 		task.run();
 	}
 
 	@Test
-	public void failure() throws ExecutionException, InterruptedException {
+	public void failure() throws Exception {
 		final String s = "Hello World";
 		Callable<String> callable = new Callable<String>() {
 			@Override
@@ -68,15 +66,12 @@ public class ListenableFutureTaskTests {
 			public void onSuccess(String result) {
 				fail("onSuccess not expected");
 			}
-
 			@Override
-			public void onFailure(Throwable t) {
-				assertEquals(s, t.getMessage());
+			public void onFailure(Throwable ex) {
+				assertEquals(s, ex.getMessage());
 			}
 		});
 		task.run();
 	}
-
-
 
 }

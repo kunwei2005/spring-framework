@@ -251,9 +251,10 @@ public class StompSubProtocolHandler implements SubProtocolHandler, ApplicationE
 				logger.error("Ignoring message, no subscriptionId header: " + message);
 				return;
 			}
-			String header = UserDestinationMessageHandler.SUBSCRIBE_DESTINATION;
-			if (message.getHeaders().containsKey(header)) {
-				headers.setDestination((String) message.getHeaders().get(header));
+			String name = UserDestinationMessageHandler.SUBSCRIBE_DESTINATION;
+			String origDestination = headers.getFirstNativeHeader(name);
+			if (origDestination != null) {
+				headers.setDestination(origDestination);
 			}
 		}
 
@@ -365,6 +366,10 @@ public class StompSubProtocolHandler implements SubProtocolHandler, ApplicationE
 		if ((this.userSessionRegistry != null) && (principal != null)) {
 			String userName = resolveNameForUserSessionRegistry(principal);
 			this.userSessionRegistry.unregisterSessionId(userName, session.getId());
+		}
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("WebSocket session ended, sending DISCONNECT message to broker");
 		}
 
 		StompHeaderAccessor headers = StompHeaderAccessor.create(StompCommand.DISCONNECT);

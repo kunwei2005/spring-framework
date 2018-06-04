@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,15 +21,19 @@ import org.springframework.util.ObjectUtils;
 
 /**
  * Extension of {@link HttpEntity} that adds a {@link HttpStatus} status code.
+ * Used in {@code RestTemplate} as well {@code @Controller} methods.
  *
- * <p>Returned by {@link org.springframework.web.client.RestTemplate#getForEntity}:
+ * <p>In {@code RestTemplate}, this class is returned by
+ * {@link org.springframework.web.client.RestTemplate#getForEntity getForEntity()} and
+ * {@link org.springframework.web.client.RestTemplate#exchange exchange()}:
  * <pre class="code">
  * ResponseEntity&lt;String&gt; entity = template.getForEntity("http://example.com", String.class);
  * String body = entity.getBody();
  * MediaType contentType = entity.getHeaders().getContentType();
  * HttpStatus statusCode = entity.getStatusCode();
  * </pre>
- * <p>Can also be used in Spring MVC, as a return value from a @Controller method:
+ *
+ * <p>Can also be used in Spring MVC, as the return value from a @Controller method:
  * <pre class="code">
  * &#64;RequestMapping("/handle")
  * public ResponseEntity&lt;String&gt; handle() {
@@ -102,16 +106,16 @@ public class ResponseEntity<T> extends HttpEntity<T> {
 		if (this == other) {
 			return true;
 		}
-		if (!(other instanceof ResponseEntity)) {
+		if (!(other instanceof ResponseEntity) || !super.equals(other)) {
 			return false;
 		}
 		ResponseEntity<?> otherEntity = (ResponseEntity<?>) other;
-		return (ObjectUtils.nullSafeEquals(this.statusCode, otherEntity.statusCode) && super.equals(other));
+		return ObjectUtils.nullSafeEquals(this.statusCode, otherEntity.statusCode);
 	}
 
 	@Override
 	public int hashCode() {
-		return super.hashCode() * 29 + ObjectUtils.nullSafeHashCode(this.statusCode);
+		return (super.hashCode() * 29 + ObjectUtils.nullSafeHashCode(this.statusCode));
 	}
 
 	@Override

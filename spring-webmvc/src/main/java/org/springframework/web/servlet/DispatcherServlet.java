@@ -904,7 +904,7 @@ public class DispatcherServlet extends FrameworkServlet {
 
 			try {
 				processedRequest = checkMultipart(request);
-				multipartRequestParsed = processedRequest != request;
+				multipartRequestParsed = (processedRequest != request);
 
 				// Determine handler for the current request.
 				mappedHandler = getHandler(processedRequest);
@@ -1055,9 +1055,13 @@ public class DispatcherServlet extends FrameworkServlet {
 	 */
 	protected HttpServletRequest checkMultipart(HttpServletRequest request) throws MultipartException {
 		if (this.multipartResolver != null && this.multipartResolver.isMultipart(request)) {
-			if (request instanceof MultipartHttpServletRequest) {
+			if (WebUtils.getNativeRequest(request, MultipartHttpServletRequest.class) != null) {
 				logger.debug("Request is already a MultipartHttpServletRequest - if not in a forward, " +
 						"this typically results from an additional MultipartFilter in web.xml");
+			}
+			else if (request.getAttribute(WebUtils.ERROR_EXCEPTION_ATTRIBUTE) instanceof MultipartException) {
+				logger.debug("Multipart resolution failed for current request before - " +
+						"skipping re-resolution for undisturbed error rendering");
 			}
 			else {
 				return this.multipartResolver.resolveMultipart(request);
@@ -1069,13 +1073,13 @@ public class DispatcherServlet extends FrameworkServlet {
 
 	/**
 	 * Clean up any resources used by the given multipart request (if any).
-	 * @param servletRequest current HTTP request
+	 * @param request current HTTP request
 	 * @see MultipartResolver#cleanupMultipart
 	 */
-	protected void cleanupMultipart(HttpServletRequest servletRequest) {
-		MultipartHttpServletRequest req = WebUtils.getNativeRequest(servletRequest, MultipartHttpServletRequest.class);
-		if (req != null) {
-			this.multipartResolver.cleanupMultipart(req);
+	protected void cleanupMultipart(HttpServletRequest request) {
+		MultipartHttpServletRequest multipartRequest = WebUtils.getNativeRequest(request, MultipartHttpServletRequest.class);
+		if (multipartRequest != null) {
+			this.multipartResolver.cleanupMultipart(multipartRequest);
 		}
 	}
 
@@ -1271,7 +1275,7 @@ public class DispatcherServlet extends FrameworkServlet {
 	}
 
 	private void triggerAfterCompletionWithError(HttpServletRequest request, HttpServletResponse response,
-			HandlerExecutionChain mappedHandler, Error error) throws Exception, ServletException {
+			HandlerExecutionChain mappedHandler, Error error) throws Exception {
 
 		ServletException ex = new NestedServletException("Handler processing failed", error);
 		if (mappedHandler != null) {

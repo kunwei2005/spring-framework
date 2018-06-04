@@ -416,7 +416,24 @@ public final class ResolvableType implements Serializable {
 	}
 
 	/**
-	 * Determine whether the underlying type has unresolvable generics:
+	 * Return {@code true} if this type contains unresolvable generics only,
+	 * that is, no substitute for any of its declared type variables.
+	 */
+	boolean isEntirelyUnresolvable() {
+		if (this == NONE) {
+			return false;
+		}
+		ResolvableType[] generics = getGenerics();
+		for (ResolvableType generic : generics) {
+			if (!generic.isUnresolvableTypeVariable() && !generic.isWildcardWithoutBounds()) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/**
+	 * Determine whether the underlying type has any unresolvable generics:
 	 * either through an unresolvable type variable on the type itself
 	 * or through implementing a generic interface in a raw fashion,
 	 * i.e. without substituting that interface's type variables.
@@ -634,8 +651,8 @@ public final class ResolvableType implements Serializable {
 	/**
 	 * Convenience method that will {@link #getGeneric(int...) get} and
 	 * {@link #resolve() resolve} a specific generic parameters.
-	 * @param indexes the indexes that refer to the generic parameter (may be omitted to
-	 * return the first generic)
+	 * @param indexes the indexes that refer to the generic parameter
+	 * (may be omitted to return the first generic)
 	 * @return a resolved {@link Class} or {@code null}
 	 * @see #getGeneric(int...)
 	 * @see #resolve()
@@ -645,11 +662,11 @@ public final class ResolvableType implements Serializable {
 	}
 
 	/**
-	 * Resolve this type to a {@link java.lang.Class}, returning {@code null} if the type
-	 * cannot be resolved. This method will consider bounds of {@link TypeVariable}s and
-	 * {@link WildcardType}s if direct resolution fails; however, bounds of
-	 * {@code Object.class} will be ignored.
-	 * @return the resolved {@link Class} or {@code null}
+	 * Resolve this type to a {@link java.lang.Class}, returning {@code null}
+	 * if the type cannot be resolved. This method will consider bounds of
+	 * {@link TypeVariable}s and {@link WildcardType}s if direct resolution fails;
+	 * however, bounds of {@code Object.class} will be ignored.
+	 * @return the resolved {@link Class}, or {@code null} if not resolvable
 	 * @see #resolve(Class)
 	 * @see #resolveGeneric(int...)
 	 * @see #resolveGenerics()
@@ -791,7 +808,11 @@ public final class ResolvableType implements Serializable {
 
 	@Override
 	public int hashCode() {
-		return ObjectUtils.nullSafeHashCode(this.type);
+		int hashCode = ObjectUtils.nullSafeHashCode(this.type);
+		hashCode = 31 * hashCode + ObjectUtils.nullSafeHashCode(getSource());
+		hashCode = 31 * hashCode + variableResolverSourceHashCode();
+		hashCode = 31 * hashCode + ObjectUtils.nullSafeHashCode(this.componentType);
+		return hashCode;
 	}
 
 	/**
@@ -819,6 +840,14 @@ public final class ResolvableType implements Serializable {
 			return false;
 		}
 		return ObjectUtils.nullSafeEquals(this.variableResolver.getSource(), other.getSource());
+	}
+
+	private int variableResolverSourceHashCode() {
+		int hashCode = 0;
+		if (this.variableResolver != null) {
+			hashCode = ObjectUtils.nullSafeHashCode(this.variableResolver.getSource());
+		}
+		return hashCode;
 	}
 
 	private static ResolvableType[] forTypes(Type[] types, VariableResolver owner) {
@@ -1163,8 +1192,17 @@ public final class ResolvableType implements Serializable {
 		if (type == null) {
 			return NONE;
 		}
-		// Check the cache, we may have a ResolvableType that may have already been resolved
+
+		// Purge empty entries on access since we don't have a clean-up thread or the like.
 		cache.purgeUnreferencedEntries();
+
+		// For simple Class references, build the wrapper right away -
+		// no expensive resolution necessary, so not worth caching...
+		if (type instanceof Class<?>) {
+			return new ResolvableType(type, typeProvider, variableResolver, null);
+		}
+
+		// Check the cache - we may have a ResolvableType which has been resolved before...
 		ResolvableType key = new ResolvableType(type, typeProvider, variableResolver);
 		ResolvableType resolvableType = cache.get(key);
 		if (resolvableType == null) {

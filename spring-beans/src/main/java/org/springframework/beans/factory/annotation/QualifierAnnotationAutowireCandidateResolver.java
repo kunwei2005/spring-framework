@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.Set;
 
 import org.springframework.beans.SimpleTypeConverter;
 import org.springframework.beans.TypeConverter;
+import org.springframework.beans.factory.NoSuchBeanDefinitionException;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.config.DependencyDescriptor;
 import org.springframework.beans.factory.support.AutowireCandidateQualifier;
@@ -53,7 +54,7 @@ import org.springframework.util.StringUtils;
  */
 public class QualifierAnnotationAutowireCandidateResolver extends GenericTypeAwareAutowireCandidateResolver {
 
-	private final Set<Class<? extends Annotation>> qualifierTypes = new LinkedHashSet<Class<? extends Annotation>>();
+	private final Set<Class<? extends Annotation>> qualifierTypes = new LinkedHashSet<Class<? extends Annotation>>(2);
 
 	private Class<? extends Annotation> valueAnnotationType = Value.class;
 
@@ -66,9 +67,9 @@ public class QualifierAnnotationAutowireCandidateResolver extends GenericTypeAwa
 	@SuppressWarnings("unchecked")
 	public QualifierAnnotationAutowireCandidateResolver() {
 		this.qualifierTypes.add(Qualifier.class);
-		ClassLoader cl = QualifierAnnotationAutowireCandidateResolver.class.getClassLoader();
 		try {
-			this.qualifierTypes.add((Class<? extends Annotation>) cl.loadClass("javax.inject.Qualifier"));
+			this.qualifierTypes.add((Class<? extends Annotation>) ClassUtils.forName("javax.inject.Qualifier",
+							QualifierAnnotationAutowireCandidateResolver.class.getClassLoader()));
 		}
 		catch (ClassNotFoundException ex) {
 			// JSR-330 API not available - simply skip.
@@ -233,9 +234,14 @@ public class QualifierAnnotationAutowireCandidateResolver extends GenericTypeAwa
 			if (targetAnnotation == null) {
 				// Look for matching annotation on the target class
 				if (getBeanFactory() != null) {
-					Class<?> beanType = getBeanFactory().getType(bdHolder.getBeanName());
-					if (beanType != null) {
-						targetAnnotation = AnnotationUtils.getAnnotation(ClassUtils.getUserClass(beanType), type);
+					try {
+						Class<?> beanType = getBeanFactory().getType(bdHolder.getBeanName());
+						if (beanType != null) {
+							targetAnnotation = AnnotationUtils.getAnnotation(ClassUtils.getUserClass(beanType), type);
+						}
+					}
+					catch (NoSuchBeanDefinitionException ex) {
+						// Not the usual case - simply forget about the type check...
 					}
 				}
 				if (targetAnnotation == null && bd.hasBeanClass()) {

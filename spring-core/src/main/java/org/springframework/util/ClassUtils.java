@@ -22,7 +22,6 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
-import java.security.AccessControlException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -142,12 +141,14 @@ public abstract class ClassUtils {
 	 * ClassLoader, if available; the ClassLoader that loaded the ClassUtils
 	 * class will be used as fallback.
 	 * <p>Call this method if you intend to use the thread context ClassLoader
-	 * in a scenario where you absolutely need a non-null ClassLoader reference:
+	 * in a scenario where you clearly prefer a non-null ClassLoader reference:
 	 * for example, for class path resource loading (but not necessarily for
 	 * {@code Class.forName}, which accepts a {@code null} ClassLoader
 	 * reference as well).
-	 * @return the default ClassLoader (never {@code null})
+	 * @return the default ClassLoader (only {@code null} if even the system
+	 * ClassLoader isn't accessible)
 	 * @see Thread#getContextClassLoader()
+	 * @see ClassLoader#getSystemClassLoader()
 	 */
 	public static ClassLoader getDefaultClassLoader() {
 		ClassLoader cl = null;
@@ -155,11 +156,20 @@ public abstract class ClassUtils {
 			cl = Thread.currentThread().getContextClassLoader();
 		}
 		catch (Throwable ex) {
-			// Cannot access thread context ClassLoader - falling back to system class loader...
+			// Cannot access thread context ClassLoader - falling back...
 		}
 		if (cl == null) {
 			// No thread context class loader -> use class loader of this class.
 			cl = ClassUtils.class.getClassLoader();
+			if (cl == null) {
+				// getClassLoader() returning null indicates the bootstrap ClassLoader
+				try {
+					cl = ClassLoader.getSystemClassLoader();
+				}
+				catch (Throwable ex) {
+					// Cannot access system ClassLoader - oh well, maybe the caller can live with null...
+				}
+			}
 		}
 		return cl;
 	}
@@ -185,7 +195,7 @@ public abstract class ClassUtils {
 
 	/**
 	 * Replacement for {@code Class.forName()} that also returns Class instances
-	 * for primitives (e.g."int") and array class names (e.g. "String[]").
+	 * for primitives (e.g. "int") and array class names (e.g. "String[]").
 	 * Furthermore, it is also capable of resolving inner class names in Java source
 	 * style (e.g. "java.lang.Thread.State" instead of "java.lang.Thread$State").
 	 * @param name the name of the Class
@@ -228,19 +238,19 @@ public abstract class ClassUtils {
 			return Array.newInstance(elementClass, 0).getClass();
 		}
 
-		ClassLoader classLoaderToUse = classLoader;
-		if (classLoaderToUse == null) {
-			classLoaderToUse = getDefaultClassLoader();
+		ClassLoader clToUse = classLoader;
+		if (clToUse == null) {
+			clToUse = getDefaultClassLoader();
 		}
 		try {
-			return classLoaderToUse.loadClass(name);
+			return (clToUse != null ? clToUse.loadClass(name) : Class.forName(name));
 		}
 		catch (ClassNotFoundException ex) {
 			int lastDotIndex = name.lastIndexOf('.');
 			if (lastDotIndex != -1) {
 				String innerClassName = name.substring(0, lastDotIndex) + '$' + name.substring(lastDotIndex + 1);
 				try {
-					return classLoaderToUse.loadClass(innerClassName);
+					return (clToUse != null ? clToUse.loadClass(innerClassName) : Class.forName(innerClassName));
 				}
 				catch (ClassNotFoundException ex2) {
 					// swallow - let original exception get through
@@ -354,21 +364,27 @@ public abstract class ClassUtils {
 	 */
 	public static boolean isCacheSafe(Class<?> clazz, ClassLoader classLoader) {
 		Assert.notNull(clazz, "Class must not be null");
-		ClassLoader target = clazz.getClassLoader();
-		if (target == null) {
-			return true;
-		}
-		ClassLoader cur = classLoader;
-		if (cur == target) {
-			return true;
-		}
-		while (cur != null) {
-			cur = cur.getParent();
+		try {
+			ClassLoader target = clazz.getClassLoader();
+			if (target == null) {
+				return true;
+			}
+			ClassLoader cur = classLoader;
 			if (cur == target) {
 				return true;
 			}
+			while (cur != null) {
+				cur = cur.getParent();
+				if (cur == target) {
+					return true;
+				}
+			}
+			return false;
 		}
-		return false;
+		catch (SecurityException ex) {
+			// Probably from the system ClassLoader - let's consider it safe.
+			return true;
+		}
 	}
 
 
@@ -757,7 +773,7 @@ public abstract class ClassUtils {
 					return (specificMethod != null ? specificMethod : method);
 				}
 			}
-			catch (AccessControlException ex) {
+			catch (SecurityException ex) {
 				// Security settings are disallowing reflective access; fall back to 'method' below.
 			}
 		}

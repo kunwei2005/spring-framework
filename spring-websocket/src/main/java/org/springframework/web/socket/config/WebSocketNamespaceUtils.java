@@ -40,6 +40,7 @@ import org.springframework.web.socket.sockjs.transport.handler.WebSocketTranspor
  */
 class WebSocketNamespaceUtils {
 
+
 	public static RuntimeBeanReference registerHandshakeHandler(Element element, ParserContext parserContext, Object source) {
 		RuntimeBeanReference handlerRef;
 		Element handlerElem = DomUtils.getChildElementByTagName(element, "handshake-handler");
@@ -139,6 +140,7 @@ class WebSocketNamespaceUtils {
 			taskSchedulerDef.setSource(source);
 			taskSchedulerDef.setRole(BeanDefinition.ROLE_INFRASTRUCTURE);
 			taskSchedulerDef.getPropertyValues().add("poolSize", Runtime.getRuntime().availableProcessors());
+			taskSchedulerDef.getPropertyValues().add("removeOnCancelPolicy", true);
 			taskSchedulerDef.getPropertyValues().add("threadNamePrefix", schedulerName + "-");
 			parserContext.getRegistry().registerBeanDefinition(schedulerName, taskSchedulerDef);
 			parserContext.registerComponent(new BeanComponentDefinition(taskSchedulerDef, schedulerName));

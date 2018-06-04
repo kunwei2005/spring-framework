@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2014 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -119,7 +119,7 @@ abstract class ConfigurationClassUtils {
 
 	/**
 	 * Check the given metadata for a lite configuration class candidate
-	 * (i.e. a class annotated with {@code @Component} or just having
+	 * (e.g. a class annotated with {@code @Component} or just having
 	 * {@code @Import} declarations or {@code @Bean methods}).
 	 * @param metadata the metadata of the annotated class
 	 * @return {@code true} if the given class is to be processed as a lite
@@ -137,6 +137,14 @@ abstract class ConfigurationClassUtils {
 	 */
 	public static boolean isFullConfigurationClass(BeanDefinition beanDef) {
 		return CONFIGURATION_CLASS_FULL.equals(beanDef.getAttribute(CONFIGURATION_CLASS_ATTRIBUTE));
+	}
+
+	/**
+	 * Determine whether the given bean definition indicates a lite {@code @Configuration}
+	 * class, through checking {@link #checkConfigurationClassCandidate}'s metadata marker.
+	 */
+	public static boolean isLiteConfigurationClass(BeanDefinition beanDef) {
+		return CONFIGURATION_CLASS_LITE.equals(beanDef.getAttribute(CONFIGURATION_CLASS_ATTRIBUTE));
 	}
 
 }

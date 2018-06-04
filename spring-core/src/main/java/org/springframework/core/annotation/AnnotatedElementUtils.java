@@ -40,7 +40,6 @@ public class AnnotatedElementUtils {
 	public static Set<String> getMetaAnnotationTypes(AnnotatedElement element, String annotationType) {
 		final Set<String> types = new LinkedHashSet<String>();
 		process(element, annotationType, false, new Processor<Object>() {
-
 			@Override
 			public Object process(Annotation annotation, int metaDepth) {
 				if (metaDepth > 0) {
@@ -48,7 +47,6 @@ public class AnnotatedElementUtils {
 				}
 				return null;
 			}
-
 			@Override
 			public void postProcess(Annotation annotation, Object result) {
 			}
@@ -58,7 +56,6 @@ public class AnnotatedElementUtils {
 
 	public static boolean hasMetaAnnotationTypes(AnnotatedElement element, String annotationType) {
 		return Boolean.TRUE.equals(process(element, annotationType, false, new Processor<Boolean>() {
-
 			@Override
 			public Boolean process(Annotation annotation, int metaDepth) {
 				if (metaDepth > 0) {
@@ -66,7 +63,6 @@ public class AnnotatedElementUtils {
 				}
 				return null;
 			}
-
 			@Override
 			public void postProcess(Annotation annotation, Boolean result) {
 			}
@@ -75,12 +71,10 @@ public class AnnotatedElementUtils {
 
 	public static boolean isAnnotated(AnnotatedElement element, String annotationType) {
 		return Boolean.TRUE.equals(process(element, annotationType, false, new Processor<Boolean>() {
-
 			@Override
 			public Boolean process(Annotation annotation, int metaDepth) {
 				return Boolean.TRUE;
 			}
-
 			@Override
 			public void postProcess(Annotation annotation, Boolean result) {
 			}
@@ -95,19 +89,17 @@ public class AnnotatedElementUtils {
 			final boolean classValuesAsString, final boolean nestedAnnotationsAsMap) {
 
 		return process(element, annotationType, false, new Processor<AnnotationAttributes>() {
-
 			@Override
 			public AnnotationAttributes process(Annotation annotation, int metaDepth) {
 				return AnnotationUtils.getAnnotationAttributes(annotation, classValuesAsString, nestedAnnotationsAsMap);
 			}
-
 			@Override
 			public void postProcess(Annotation annotation, AnnotationAttributes result) {
 				for (String key : result.keySet()) {
 					if (!AnnotationUtils.VALUE.equals(key)) {
 						Object value = AnnotationUtils.getValue(annotation, key);
 						if (value != null) {
-							result.put(key, value);
+							result.put(key, AnnotationUtils.adaptValue(value, classValuesAsString, nestedAnnotationsAsMap));
 						}
 					}
 				}
@@ -115,8 +107,7 @@ public class AnnotatedElementUtils {
 		});
 	}
 
-	public static MultiValueMap<String, Object> getAllAnnotationAttributes(AnnotatedElement element,
-			String annotationType) {
+	public static MultiValueMap<String, Object> getAllAnnotationAttributes(AnnotatedElement element, String annotationType) {
 		return getAllAnnotationAttributes(element, annotationType, false, false);
 	}
 
@@ -125,18 +116,16 @@ public class AnnotatedElementUtils {
 
 		final MultiValueMap<String, Object> attributes = new LinkedMultiValueMap<String, Object>();
 		process(element, annotationType, false, new Processor<Void>() {
-
 			@Override
 			public Void process(Annotation annotation, int metaDepth) {
 				if (annotation.annotationType().getName().equals(annotationType)) {
-					for (Map.Entry<String, Object> entry : AnnotationUtils.getAnnotationAttributes(annotation,
-						classValuesAsString, nestedAnnotationsAsMap).entrySet()) {
+					for (Map.Entry<String, Object> entry : AnnotationUtils.getAnnotationAttributes(
+							annotation, classValuesAsString, nestedAnnotationsAsMap).entrySet()) {
 						attributes.add(entry.getKey(), entry.getValue());
 					}
 				}
 				return null;
 			}
-
 			@Override
 			public void postProcess(Annotation annotation, Void result) {
 				for (String key : attributes.keySet()) {
@@ -171,7 +160,7 @@ public class AnnotatedElementUtils {
 
 		try {
 			return doProcess(element, annotationType, traverseClassHierarchy, processor,
-				new HashSet<AnnotatedElement>(), 0);
+					new HashSet<AnnotatedElement>(), 0);
 		}
 		catch (Throwable ex) {
 			throw new IllegalStateException("Failed to introspect annotations: " + element, ex);
@@ -199,16 +188,16 @@ public class AnnotatedElementUtils {
 			Processor<T> processor, Set<AnnotatedElement> visited, int metaDepth) {
 
 		if (visited.add(element)) {
-			Annotation[] annotations = (traverseClassHierarchy ? element.getDeclaredAnnotations()
-					: element.getAnnotations());
+			Annotation[] annotations =
+					(traverseClassHierarchy ? element.getDeclaredAnnotations() : element.getAnnotations());
 			for (Annotation annotation : annotations) {
 				if (annotation.annotationType().getName().equals(annotationType) || metaDepth > 0) {
 					T result = processor.process(annotation, metaDepth);
 					if (result != null) {
 						return result;
 					}
-					result = doProcess(annotation.annotationType(), annotationType, traverseClassHierarchy, processor,
-						visited, metaDepth + 1);
+					result = doProcess(annotation.annotationType(), annotationType, traverseClassHierarchy,
+							processor, visited, metaDepth + 1);
 					if (result != null) {
 						processor.postProcess(annotation, result);
 						return result;
@@ -218,7 +207,7 @@ public class AnnotatedElementUtils {
 			for (Annotation annotation : annotations) {
 				if (!AnnotationUtils.isInJavaLangAnnotationPackage(annotation)) {
 					T result = doProcess(annotation.annotationType(), annotationType, traverseClassHierarchy,
-						processor, visited, metaDepth);
+							processor, visited, metaDepth);
 					if (result != null) {
 						processor.postProcess(annotation, result);
 						return result;
@@ -228,8 +217,7 @@ public class AnnotatedElementUtils {
 			if (traverseClassHierarchy && element instanceof Class) {
 				Class<?> superclass = ((Class<?>) element).getSuperclass();
 				if (superclass != null && !superclass.equals(Object.class)) {
-					T result = doProcess(superclass, annotationType, traverseClassHierarchy, processor, visited,
-						metaDepth);
+					T result = doProcess(superclass, annotationType, true, processor, visited, metaDepth);
 					if (result != null) {
 						return result;
 					}
@@ -255,7 +243,7 @@ public class AnnotatedElementUtils {
 		 * will have a depth of 2.
 		 * @param annotation the annotation to process
 		 * @param metaDepth the depth of the annotation relative to the initial element
-		 * @return the result of the processing or {@code null} to continue
+		 * @return the result of the processing, or {@code null} to continue
 		 */
 		T process(Annotation annotation, int metaDepth);
 
